@@ -1,9 +1,11 @@
 # ====================================
 # Run commands for deveopement 
 # ====================================
+xhost +
 docker run \
     -it \
-    --gpus all \
-    --name $1\
+    --name $1 \
+    -v /tmp/.X11-unix:/tmp/.X11-unix \
+    -e DISPLAY=$DISPLAY \
     ubuntu:gpis
-
+xhost -
