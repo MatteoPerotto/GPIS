@@ -6,6 +6,9 @@ MAINTAINER Matteo Perotto <perotto.matteo@gmail.com>
 # Set up some basic packages
 # ======================================
 
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=Europe/Rome
+
 RUN apt-get update && \
     apt-get install -y -qq --no-install-recommends \
     apt-utils \
@@ -38,7 +41,8 @@ RUN apt-get update && apt-get install -y \
 RUN apt-get install -y \
     python3\
     python3-pip \
-    python3-venv
+    python3-venv \
+    python3-tk
     
 # ======================================
 # Create user and switch to it 
@@ -52,9 +56,10 @@ USER user
 # ======================================
 WORKDIR /home/user 
 
+RUN git clone https://github.com/MatteoPerotto/GPIS.git
 RUN python3 -m venv env 
-RUN . env/bin/activate && pip install --upgrade pip && pip install numpy matplotlib  
+RUN . env/bin/activate && pip install --upgrade pip && pip install numpy matplotlib pyqt5
 
-ADD ./entrypoint.sh 
+ADD ./entrypoint.sh /home/user
 ENTRYPOINT ["./entrypoint.sh"]
 CMD ["bash"]
