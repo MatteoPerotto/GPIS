@@ -58,7 +58,7 @@ WORKDIR /home/user
 
 RUN git clone https://github.com/MatteoPerotto/GPIS.git
 RUN python3 -m venv env 
-RUN . env/bin/activate && pip install --upgrade pip && pip install numpy matplotlib pyqt5
+RUN . env/bin/activate && pip install --upgrade pip && pip install numpy matplotlib pyqt5 sklearn 
 
 ADD ./entrypoint.sh /home/user
 ENTRYPOINT ["./entrypoint.sh"]
