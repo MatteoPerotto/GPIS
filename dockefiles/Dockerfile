@@ -43,7 +43,10 @@ RUN apt-get install -y \
     python3-pip \
     python3-venv \
     python3-tk
-    
+
+RUN apt-get install -y \
+    qt5-default
+     
 # ======================================
 # Create user and switch to it 
 # ======================================
@@ -58,7 +61,7 @@ WORKDIR /home/user
 
 RUN git clone https://github.com/MatteoPerotto/GPIS.git
 RUN python3 -m venv env 
-RUN . env/bin/activate && pip install --upgrade pip && pip install numpy matplotlib pyqt5 sklearn 
+RUN . env/bin/activate && pip install --upgrade pip && pip install numpy matplotlib pyqt5 sklearn pymeshlab  
 
 ADD ./entrypoint.sh /home/user
 ENTRYPOINT ["./entrypoint.sh"]
