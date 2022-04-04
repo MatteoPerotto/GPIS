@@ -96,3 +96,6 @@ for axis in 'xyz':
 
 getattr(ax, 'set_{}lim'.format('z'))((-1, 1))
 plt.show()
+
+
+

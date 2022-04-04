@@ -22,7 +22,7 @@ def thinPlateKernel(X, R=1, sig_var=1):
         distance = sklearn.metrics.pairwise_distances(*X)
     else:
         distance = sklearn.metrics.pairwise_distances(X)
-    return 2*np.absolute(distance)**3-3*R*distance**2+R**3 
+    return 2*distance**3-3*R*distance**2+R**3 
 
  
 def expGPIS(trainMatX, trainMatY, testMatX, l=1, sig_var=1, noise_var=1):
@@ -62,16 +62,21 @@ def thinGPIS(trainMatX, trainMatY, testMatX, R=1, sig_var=1, noise_var=1):
 pcd = o3d.io.read_point_cloud("../3d-tools/python/mesh_pc_render/partial_pc/019_pitcher_base_0000_pc.pcd")
 pcdPoints = np.asarray(pcd.points)
 print(np.asarray(pcd.points))
-o3d.visualization.draw_geometries([pcd])
+#o3d.visualization.draw_geometries([pcd])
 
 print("Compute the normal of the downsampled point cloud")
 pcd.estimate_normals(
     search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
 o3d.geometry.PointCloud.orient_normals_towards_camera_location(pcd)
-o3d.visualization.draw_geometries([pcd],point_show_normal=True)
+#o3d.visualization.draw_geometries([pcd],point_show_normal=True)
+
+# Extract bounding box 
+boundingBox = o3d.geometry.PointCloud.get_oriented_bounding_box(pcd)
+boxCenter = boundingBox.center
+boxDim = boundingBox.extent
 
 pointN = 3000
-trainN = 2000
+trainN = 1000
 #mask = np.zeros(pointN, dtype=bool)
 #mask[np.random.choice(np.arange(0,pointN), size=trainN, replace=False)] = True
 
@@ -87,10 +92,8 @@ trainMatYOutside = np.ones((trainN,1))
 trainMatXInside = np.zeros((trainN,3))
 trainMatYInside = (-1)*np.ones((trainN,1))
 
-import ipdb; ipdb.set_trace()
-
 # Add point inside and outside 
-outDim = 0.001
+outDim = 0.01
 pcdNormals = np.asarray(pcd.normals)
 for index,normal in enumerate(pcdNormals[mask]):
     xOut = trainMatX[index,0] + outDim*normal[0] #np.dot(normal,np.array([0,0,1]))
@@ -102,24 +105,23 @@ for index,normal in enumerate(pcdNormals[mask]):
     zIn = trainMatX[index,2] + -outDim*normal[2]
     trainMatXInside[index,:] = np.array([xIn,yIn,zIn])
 
-trainMatXAll = np.row_stack((trainMatX,trainMatXOutside,trainMatXInside))
-trainMatYAll = np.row_stack((trainMatY,trainMatYOutside,trainMatYInside))
+extintP = 20
+extMask = np.zeros(trainN, dtype=bool)
+extMask[np.random.choice(np.arange(0,trainN), size=extintP, replace=False)] = True
+trainMatXAll = np.row_stack((trainMatX,trainMatXOutside[extMask],trainMatXInside[extMask]))
+trainMatYAll = np.row_stack((trainMatY,trainMatYOutside[extMask],trainMatYInside[extMask]))
 
-print(trainMatXAll.shape)
-print(trainMatYAll.shape)
-    
-xV = np.linspace(-0.1,0.1,30)
-yV = np.linspace(-0.1,0.1,30)
-zV = np.linspace(-0.12,0.12,30)
+xV = np.linspace(boxCenter[0]-boxDim[0],boxCenter[0]+boxDim[0],20)
+yV = np.linspace(boxCenter[1]-boxDim[1],boxCenter[1]+boxDim[1],20)
+zV = np.linspace(boxCenter[2]-boxDim[2],boxCenter[2]+boxDim[2],20)
 
-#x, y, z = np.meshgrid(xV, yV, zV)
-#testMatX = np.column_stack([x.ravel(), y.ravel(), z.ravel()])
-testMatX = np.column_stack([pcdPoints[~mask,0],pcdPoints[~mask,1],pcdPoints[~mask,2]])
+x, y, z = np.meshgrid(xV, yV, zV)
+testMatX = np.column_stack([x.ravel(), y.ravel(), z.ravel()])
 
 ## GPIS ##
 R = 1.7320*0.3
-varS = 0.0001
-varN = 0.0001
+varS = 0.001
+varN = 0
 
 #startTime = time.time()
 #mu, cov = expGPIS(trainMatXAll, trainMatYAll, testMatX, l, varS, varN)
@@ -150,7 +152,11 @@ indexes = np.absolute(mu)<0.02
 fig3D = plt.figure(figsize=plt.figaspect(1))  
 ax = fig3D.gca(projection='3d')
 ax.scatter(trainMatX[:,0], trainMatX[:,1], trainMatX[:,2], color='g')
-ax.scatter(testMatX[indexes,0], testMatX[indexes,1], testMatX[indexes,2], c=std[indexes] , cmap='hot')
+ax.scatter(testMatX[indexes,0], testMatX[indexes,1], testMatX[indexes,2], c=std[indexes] , cmap='cool')
+#for axis in 'xyz':
+#    getattr(ax, 'set_{}lim'.format(axis))((-dlim, dlim))
+
+getattr(ax, 'set_{}lim'.format('z'))((0.4, 1))
 plt.show()
 
 
