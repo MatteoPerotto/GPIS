@@ -14,14 +14,12 @@ import gpytorch
 import gpdata 
 import myGPs
 
-gpytorch.settings.max_cg_iterations(2000)
-
 # Import point cloud
 pcd = o3d.io.read_point_cloud("../3d-tools/python/mesh_pc_render/partial_pc/002_master_chef_can_0000_pc.pcd")
 pcdPoints = np.asarray(pcd.points)
 #o3d.visualization.draw_geometries([pcd])
 
-# Center it 
+# Center it  
 pcdCenter = pcd.get_center()
 
 # Estimate normals 
@@ -34,36 +32,53 @@ pcdNormals = np.asarray(pcd.normals)
 # Estimate bounding box 
 boundingBox = o3d.geometry.PointCloud.get_oriented_bounding_box(pcd)
 boundingBox.color = np.asarray([0, 0, 0])
-#o3d.visualization.draw_geometries([pcd,boundingBox])
+boundingBox.scale(1.5,boundingBox.center)
+o3d.visualization.draw_geometries([pcd,boundingBox])
 
 boxCenter = boundingBox.center
 boxDim = boundingBox.extent
 boxPoints = np.asarray(boundingBox.get_box_points())
-
-trainN = 500
+maxDiag = np.linalg.norm(boxDim)
+            
+trainN = 1000
 dataHandler = gpdata.GPdataHandler(pcdPoints, pcdCenter, trainN)
 #trainMatXAll, trainMatYAll = dataHandler.genFromNormals(pcdNormals, 0.01)
-trainMatXAll, trainMatYAll = dataHandler.genFromBB(boxCenter, boxPoints, boxDim, spherePointN=2)
+trainMatXAll, trainMatYAll = dataHandler.genFromBB(boxCenter, boxPoints, boxDim, boxEdgePointN=5, spherePointN=3,sphereRadius=0.01)
 
-testPointN = 10000
-testMatX = dataHandler.genTestPoints(testPointN,boxCenter, boxDim)
+testPointN = 20000
+testMatX = dataHandler.genTestPoints(testPointN,boxCenter,boxDim)
 
 Xt = torch.from_numpy(trainMatXAll).float()
 Yt = torch.from_numpy(np.squeeze(trainMatYAll)).float()
-Xt_test = torch.from_numpy(testMatX).float()
+X_test = torch.from_numpy(testMatX).float()
 
 X = Xt.clone().detach().requires_grad_(True)
 Y = Yt.clone().detach().requires_grad_(True)
-X_test = Xt_test.clone().detach()
 
 likelihood = gpytorch.likelihoods.GaussianLikelihood()
 model = myGPs.thinPlateModel(X, Y, likelihood)
+
+hypers = {
+    'likelihood.noise_covar.noise': torch.tensor(0.1),
+    'covar_module.max_dist': torch.tensor(0.8),
+}
+model.initialize(**hypers)
+
 model.train()
 likelihood.train()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.02)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.4)
 mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
-   
-training_iter = 20
+
+print('\n\n**Printing all model constraints...**\n')
+for constraint_name, constraint in model.named_constraints():
+    print(f'Constraint name: {constraint_name:55} constraint = {constraint}')
+
+print('\n\n**Printing all model parameters...**\n')
+for param_name, param in model.named_parameters():
+    print(f'Parameter name: {param_name:42} value = {param.item()}')
+print('\n')
+
+training_iter = 4
 for i in range(training_iter):
 
     optimizer.zero_grad()
@@ -72,8 +87,11 @@ for i in range(training_iter):
     loss.backward()
     optimizer.step()
     print("Iteration: ",i)
-    print("Loss: ",loss.item())
-
+    print("Loss: ",loss.item())   
+    print(f'Actual likelihoood noise covariance: {likelihood.noise_covar.noise.item()}')
+    print(f'Actual maximum distance: {model.covar_module.max_dist.item()}')
+    print('\n')
+     
 model.eval() 
 likelihood.eval()
 
@@ -96,11 +114,12 @@ with torch.no_grad():
 
 mu = mean.numpy()
 #indexes = np.absolute(mu)<0.0004
-indexes = np.absolute(mu)<0.001 
+indexes = np.absolute(mu)<0.005
 with torch.no_grad():
     fig3D = plt.figure(figsize=plt.figaspect(1))  
     ax = fig3D.gca(projection='3d')
     ax.scatter(trainMatXAll[0:trainN,0], trainMatXAll[0:trainN,1], trainMatXAll[0:trainN,2], color='g')
+    #ax.scatter(testMatX[:,0], testMatX[:,1], testMatX[:,2])
     ax.scatter(testMatX[indexes,0], testMatX[indexes,1], testMatX[indexes,2]) #, c=mu[indexes] , cmap='cool')
     #ax.scatter(testMatX[:,0], testMatX[:,1], testMatX[:,2]) #, c=mu[indexes] , cmap='cool')
     plt.show()
