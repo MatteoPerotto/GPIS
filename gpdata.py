@@ -49,16 +49,16 @@ class GPdataHandler():
         if self.centered == True:
             trainMatXAll = trainMatXAll - self.pcdCenter 
 
-        #fig3D = plt.figure(figsize=plt.figaspect(1))  
-        #ax = fig3D.gca(projection='3d')
-        #ax.scatter(self.trainMatX[:,0], self.trainMatX[:,1], self.trainMatX[:,2], color='g')
-        #ax.scatter(trainMatXOutside[:,0], trainMatXOutside[:,1], trainMatXOutside[:,2], color='r')
-        #ax.scatter(trainMatXInside[:,0], trainMatXInside[:,1], trainMatXInside[:,2], color='b')
-        #plt.show()
-
+        fig3D = plt.figure(figsize=plt.figaspect(1))  
+        ax = fig3D.gca(projection='3d')
+        ax.scatter(self.trainMatX[:,0], self.trainMatX[:,1], self.trainMatX[:,2], color='g')
+        ax.scatter(trainMatXOutside[:,0], trainMatXOutside[:,1], trainMatXOutside[:,2], color='r')
+        ax.scatter(trainMatXInside[:,0], trainMatXInside[:,1], trainMatXInside[:,2], color='b')
+        plt.show()
+        
         return trainMatXAll, trainMatYAll
  
-    def genFromBB(self, boxCenter, boxPoints, boxDim, spherePointN=0):
+    def genFromBB(self, boxCenter, boxPoints, boxDim, boxEdgePointN=0, spherePointN=0, sphereRadius=0.01):
         
         trainMatXAll = np.concatenate((self.trainMatX, boxPoints), axis=0)
         trainMatYAll = np.concatenate((self.trainMatY, np.ones((boxPoints.shape[0],1))))
@@ -66,6 +66,7 @@ class GPdataHandler():
         center = np.reshape(boxCenter, (1, 3)) 
         trainMatXAll = np.concatenate((trainMatXAll, center), axis=0)
         trainMatYAll = np.concatenate((trainMatYAll, (-1)*np.ones((center.shape[0],1))))
+        #trainMatYAll = np.concatenate((trainMatYAll, np.zeros((center.shape[0],1))))
         
         if spherePointN !=0:    
             testPointSphere = np.zeros((spherePointN,3))
@@ -76,10 +77,26 @@ class GPdataHandler():
                 theta = phi * i  
                 x = math.cos(theta) * radius
                 z = math.sin(theta) * radius
-                testPointSphere[i,:]= self.pcdCenter + np.array([x, y, z])*0.01
+                testPointSphere[i,:]= self.pcdCenter + np.array([x, y, z])*sphereRadius
             trainMatXAll = np.concatenate((trainMatXAll,testPointSphere), axis=0)
             trainMatYAll = np.concatenate((trainMatYAll, (-1)*np.ones((testPointSphere.shape[0],1))))
+            #trainMatYAll = np.concatenate((trainMatYAll, np.zeros((testPointSphere.shape[0],1))))
       
+        if boxEdgePointN !=0:    
+            edgePoints = np.zeros((28*boxEdgePointN,3))
+            pBoxInd = 0
+            for i1 in np.arange(0,8):
+                for i2 in np.delete(np.arange(0,8),np.arange(0,i1+1)):
+                    direction = np.subtract(boxPoints[i2],boxPoints[i1])
+                    lenght = np.linalg.norm(direction)
+                    for pInd in np.arange(1,boxEdgePointN+1):
+                        if lenght<np.linalg.norm(boxDim):
+                            edgePoints[pBoxInd,:] = boxPoints[i1]+direction*pInd/(boxEdgePointN+1)
+                            pBoxInd += 1
+            edgePoints = edgePoints[np.sum(edgePoints,axis=1)!=0]
+            trainMatXAll = np.concatenate((trainMatXAll,edgePoints), axis=0)
+            trainMatYAll = np.concatenate((trainMatYAll, np.ones((edgePoints.shape[0],1))))
+            
 
         if self.centered == True:
             trainMatXAll = trainMatXAll - self.pcdCenter 
@@ -88,11 +105,12 @@ class GPdataHandler():
         ax = fig3D.gca(projection='3d')
         ax.scatter(self.trainMatX[:,0], self.trainMatX[:,1], self.trainMatX[:,2], color='g')
         ax.scatter(boxPoints[:,0], boxPoints[:,1], boxPoints[:,2], color='r')
-        ax.scatter(boxCenter[0], boxCenter[1], boxCenter[2], color='b')
-        ax.scatter(testPointSphere[:,0], testPointSphere[:,1], testPointSphere[:,2], color='b')
+        ax.scatter(boxCenter[0], boxCenter[1], boxCenter[2], color='m')
+        if spherePointN !=0 : ax.scatter(testPointSphere[:,0], testPointSphere[:,1], testPointSphere[:,2], color='b') 
+        if boxEdgePointN !=0 : ax.scatter(edgePoints[:,0], edgePoints[:,1], edgePoints[:,2], color='c') 
         plt.show()
 
-        return trainMatXAll, trainMatYAll
+        return trainMatXAll, trainMatYAll     
 
     def genTestPoints(self, testPointN, boxCenter, boxDim):
 
@@ -108,11 +126,6 @@ class GPdataHandler():
 
         if self.centered == True:
             testMatX = testMatX - self.pcdCenter
-
-        #fig3D = plt.figure(figsize=plt.figaspect(1))  
-        #ax = fig3D.gca(projection='3d')
-        #ax.scatter(testMatX[:,0], testMatX[:,1], testMatX[:,2], color='g')
-        #plt.show()
 
         return testMatX
 
