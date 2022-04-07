@@ -5,7 +5,7 @@ class thinPlateModel(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood):
         super(thinPlateModel, self).__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ZeroMean()
-        #self.covar_module = gpytorch.kernels.ScaleKernel(ThinPlateRegularizer())
+        #self.covar_module = gpytorch.kernels.ScaleKernel(ThinPlateRegularizer(), outputscale_constraint=gpytorch.constraints.Interval(1e-5,1e-3))
         self.covar_module = ThinPlateRegularizer()
 
     def forward(self, x):
@@ -28,7 +28,8 @@ class ThinPlateRegularizer(gpytorch.kernels.Kernel):
 
         # set the parameter constraint to be positive
         if dist_constraint is None:
-            dist_constraint = gpytorch.constraints.Positive()
+            dist_constraint = gpytorch.constraints.GreaterThan(0.20)
+           
 
         # register the constraint
         self.register_constraint("max_dist", dist_constraint)
@@ -65,9 +66,7 @@ class ThinPlateRegularizer(gpytorch.kernels.Kernel):
         diff = self.covar_dist(x1, x2, **params)
         # prevent divide by 0 errors
         diff.where(diff == 0, torch.as_tensor(1e-20))
-        scale = 0.01
-        term1 = torch.mul(2,torch.pow(diff,3))
-        term2_1 = torch.mul(3,self.max_dist)
-        term2 = torch.mul(term2_1,torch.pow(diff,2))
-        term3 = torch.pow(self.max_dist,3)
-        return scale*(term1+term2+term3)
+        noise = 1e-5
+        white = noise*torch.eye(diff.shape[0],diff.shape[1])
+        tp = 2*torch.pow(diff,3)-3*self.max_dist*torch.pow(diff,2)+self.max_dist**3
+        return white+tp
