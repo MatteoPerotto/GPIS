@@ -66,7 +66,6 @@ class GPdataHandler():
         center = np.reshape(boxCenter, (1, 3)) 
         trainMatXAll = np.concatenate((trainMatXAll, center), axis=0)
         trainMatYAll = np.concatenate((trainMatYAll, (-1)*np.ones((center.shape[0],1))))
-        #trainMatYAll = np.concatenate((trainMatYAll, np.zeros((center.shape[0],1))))
         
         if spherePointN !=0:    
             testPointSphere = np.zeros((spherePointN,3))
@@ -80,7 +79,6 @@ class GPdataHandler():
                 testPointSphere[i,:]= self.pcdCenter + np.array([x, y, z])*sphereRadius
             trainMatXAll = np.concatenate((trainMatXAll,testPointSphere), axis=0)
             trainMatYAll = np.concatenate((trainMatYAll, (-1)*np.ones((testPointSphere.shape[0],1))))
-            #trainMatYAll = np.concatenate((trainMatYAll, np.zeros((testPointSphere.shape[0],1))))
       
         if boxEdgePointN !=0:    
             edgePoints = np.zeros((28*boxEdgePointN,3))
