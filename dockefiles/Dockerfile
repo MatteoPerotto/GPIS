@@ -61,7 +61,7 @@ WORKDIR /home/user
 
 RUN git clone https://github.com/MatteoPerotto/GPIS.git
 RUN python3 -m venv env 
-RUN . env/bin/activate && pip install --upgrade pip && pip install numpy matplotlib pyqt5 sklearn pymeshlab open3d  
+RUN . env/bin/activate && pip install --upgrade pip && pip install numpy matplotlib pyqt5 sklearn pymeshlab open3d 
 
 ADD ./entrypoint.sh /home/user
 ENTRYPOINT ["./entrypoint.sh"]
