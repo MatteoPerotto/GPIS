@@ -21,13 +21,17 @@ class GPdataHandler():
         else:
             print("[INITIALIZATION ERROR] Point clouds must be formatted as numpy array of shape (n,3)")
     
-    def genFromNormals(self, pcdNormals, outDim):
-
-        trainMatXOutside = np.zeros((self.trainN,3))
-        trainMatYOutside = np.ones((self.trainN,1))
+    def genFromNormals(self, pcdNormals, outDim, distanceLabel=False):
 
         trainMatXInside = np.zeros((self.trainN,3))
-        trainMatYInside = (-1)*np.ones((self.trainN,1))
+        trainMatXOutside = np.zeros((self.trainN,3))
+        
+        if distanceLabel==False:
+            trainMatYInside = (-1)*np.ones((self.trainN,1))
+            trainMatYOutside = np.ones((self.trainN,1))
+        else:
+            trainMatYInside = (-outDim)*np.ones((self.trainN,1))
+            trainMatYOutside = outDim*np.ones((self.trainN,1))
 
         # Mask normals 
         pcdNormals = pcdNormals[self.mask]
@@ -94,10 +98,7 @@ class GPdataHandler():
             edgePoints = edgePoints[np.sum(edgePoints,axis=1)!=0]
             trainMatXAll = np.concatenate((trainMatXAll,edgePoints), axis=0)
             trainMatYAll = np.concatenate((trainMatYAll, np.ones((edgePoints.shape[0],1))))
-            
-
-        if self.centered == True:
-            trainMatXAll = trainMatXAll - self.pcdCenter 
+            outDimnter 
 
         fig3D = plt.figure(figsize=plt.figaspect(1))  
         ax = fig3D.gca(projection='3d')

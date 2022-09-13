@@ -78,10 +78,10 @@ boxCenter = gridBoundingBox.center
 boxDim = gridBoundingBox.extent
 boxPoints = np.asarray(gridBoundingBox.get_box_points())
             
-trainN = 500
+trainN = 300
 dataHandler = gpdata.GPdataHandler(pcdPoints, pcdCenter, trainN)
-#trainMatXAll, trainMatYAll = dataHandler.genFromNormals(pcdNormals, 0.01)
-trainMatXAll, trainMatYAll = dataHandler.genFromBB(boxCenter, boxPoints, boxDim, boxEdgePointN=5, spherePointN=3,sphereRadius=0.01)
+trainMatXAll, trainMatYAll = dataHandler.genFromNormals(pcdNormals, 0.01, distanceLabel=False)
+#trainMatXAll, trainMatYAll = dataHandler.genFromBB(boxCenter, boxPoints, boxDim, boxEdgePointN=5, spherePointN=0,sphereRadius=0.01)
 
 # Generate test points (no bounding box scaling)
 boundingBox  = o3d.geometry.PointCloud.get_oriented_bounding_box(pcd)
@@ -89,7 +89,7 @@ boundingBox  = o3d.geometry.PointCloud.get_oriented_bounding_box(pcd)
 #o3d.visualization.draw_geometries([pcd,boundingBox])
 boxCenter = boundingBox.center
 boxDim = boundingBox.extent
-testPointN = 400000
+testPointN = 200000
 testMatX = dataHandler.genTestPoints(testPointN,boxCenter,boxDim)
 
 Xt = torch.from_numpy(trainMatXAll).float()
@@ -160,19 +160,20 @@ with torch.no_grad():
     plt.show()
 
 mu = mean.numpy()
-indexes = np.absolute(mu)<0.002
+indexes = np.absolute(mu)<0.001
 with torch.no_grad():
     fig3D = plt.figure(figsize=plt.figaspect(1))  
     ax = fig3D.gca(projection='3d')
     ax.scatter(trainMatXAll[0:trainN,0], trainMatXAll[0:trainN,1], trainMatXAll[0:trainN,2], color='g')
     #ax.scatter(testMatX[:,0], testMatX[:,1], testMatX[:,2])
-    ax.scatter(testMatX[indexes,0], testMatX[indexes,1], testMatX[indexes,2]) #, c=mu[indexes] , cmap='cool')
+    ax.scatter(testMatX[indexes,0], testMatX[indexes,1], testMatX[indexes,2], color='r') #, c=mu[indexes] , cmap='cool')
     #ax.scatter(testMatX[:,0], testMatX[:,1], testMatX[:,2]) #, c=mu[indexes] , cmap='cool')
     plt.show()
 
 
 # Training after contact points 
 tactilePoints = tactilePoints-pcdCenter
+tactilePoints = np.repeat(tactilePoints, 50, axis=0)
 trainMatXAll = np.concatenate((trainMatXAll, tactilePoints), axis=0)
 trainMatYAll = np.concatenate((trainMatYAll, np.zeros((tactilePoints.shape[0],1))))
 
@@ -248,7 +249,37 @@ with torch.no_grad():
     fig3D = plt.figure(figsize=plt.figaspect(1))  
     ax = fig3D.gca(projection='3d')
     ax.scatter(trainMatXAll[0:trainN,0], trainMatXAll[0:trainN,1], trainMatXAll[0:trainN,2], color='g')
-    ax.scatter(testMatX[indexes,0], testMatX[indexes,1], testMatX[indexes,2]) #, c=mu[indexes] , cmap='cool')
-    ax.scatter(tactilePoints[:,0], tactilePoints[:,1], tactilePoints[:,2])
+    ax.scatter(testMatX[indexes,0], testMatX[indexes,1], testMatX[indexes,2], color='r') #, c=mu[indexes] , cmap='cool')
+    ax.scatter(tactilePoints[:,0], tactilePoints[:,1], tactilePoints[:,2], color='b')
     #ax.scatter(testMatX[:,0], testMatX[:,1], testMatX[:,2]) #, c=mu[indexes] , cmap='cool')
     plt.show()
+
+radii = [0.005, 0.01, 0.02, 0.04]
+xyz = np.zeros((np.size(testMatX[indexes,0]), 3))
+xyz[:,0] = testMatX[indexes,0]
+xyz[:,1] = testMatX[indexes,1]
+xyz[:,2] = testMatX[indexes,2]
+
+pcd2 = o3d.geometry.PointCloud()
+pcd2.points = o3d.utility.Vector3dVector(xyz)
+pcd2.estimate_normals(
+    search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+o3d.geometry.PointCloud.orient_normals_towards_camera_location(pcd2)
+pcd2.translate(pcdCenter)
+
+mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd2)
+
+densities = np.asarray(densities)
+density_colors = plt.get_cmap('plasma')(
+    (densities - densities.min()) / (densities.max() - densities.min()))
+density_colors = density_colors[:, :3]
+density_mesh = o3d.geometry.TriangleMesh()
+density_mesh.vertices = mesh.vertices
+density_mesh.triangles = mesh.triangles
+density_mesh.triangle_normals = mesh.triangle_normals
+density_mesh.vertex_colors = o3d.utility.Vector3dVector(density_colors)
+o3d.visualization.draw_geometries([originalPcd,pcd,density_mesh])
+
+#rec_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
+#    pcd, o3d.utility.DoubleVector(radii))
+#o3d.visualization.draw_geometries([pcd,rec_mesh])
