@@ -6,9 +6,11 @@ import open3d as o3d
 
 class GPdataHandler():
 
-    def __init__(self, path, trainN, testN, centered=True):
+    def __init__(self, pcd, trainN, outDim, distanceLabel=True, centered=True):
 
-        pcd = o3d.io.read_point_cloud(path)
+        self.outDim = outDim
+        self.distanceLabel = distanceLabel
+
         pcdPoints = np.asarray(pcd.points)
         self.maxZ = np.amax(pcdPoints[:,2])
 
@@ -24,11 +26,11 @@ class GPdataHandler():
         mask[np.random.choice(np.arange(0,pointN), size=trainN, replace=False)] = True
         self.mask = mask
 
-        self.testN = testN
         gridBoundingBox = o3d.geometry.PointCloud.get_oriented_bounding_box(pcd)
         gridBoundingBox.scale(1.5,gridBoundingBox.center)
         self.boxCenter = gridBoundingBox.center
         self.boxDim = gridBoundingBox.extent
+        self.boxDiag = np.sqrt(pow(self.boxDim[0],2)+pow(self.boxDim[1],2)+pow(self.boxDim[2],2))
         self.boxPoints = np.asarray(gridBoundingBox.get_box_points())
         
         if pcdPoints.shape[1] == 3 and pcdPoints.shape[0] > 0:
@@ -37,30 +39,30 @@ class GPdataHandler():
         else:
             print("[INITIALIZATION ERROR] Point clouds must be formatted as numpy array of shape (n,3)")
     
-    def genFromNormals(self, outDim, distanceLabel=False):
+    def genFromNormals(self):
 
         trainMatXInside = np.zeros((self.trainN,3))
         trainMatXOutside = np.zeros((self.trainN,3))
         
-        if distanceLabel==False:
+        if self.distanceLabel == False:
             trainMatYInside = (-1)*np.ones((self.trainN,1))
             trainMatYOutside = np.ones((self.trainN,1))
         else:
-            trainMatYInside = (-outDim)*np.ones((self.trainN,1))
-            trainMatYOutside = outDim*np.ones((self.trainN,1))
+            trainMatYInside = (-self.outDim)*np.ones((self.trainN,1))
+            trainMatYOutside = self.outDim*np.ones((self.trainN,1))
 
         # Mask normals 
         pcdNormals = self.pcdNormals[self.mask]
 
         # Add point inside and outside 
         for index,normal in enumerate(pcdNormals):
-            xOut = self.trainMatX[index,0] + outDim*normal[0] 
-            yOut = self.trainMatX[index,1] + outDim*normal[1] 
-            zOut = self.trainMatX[index,2] + outDim*normal[2] 
+            xOut = self.trainMatX[index,0] + self.outDim*normal[0] 
+            yOut = self.trainMatX[index,1] + self.outDim*normal[1] 
+            zOut = self.trainMatX[index,2] + self.outDim*normal[2] 
             trainMatXOutside[index,:] = np.array([xOut,yOut,zOut])
-            xIn = self.trainMatX[index,0] - outDim*normal[0]
-            yIn = self.trainMatX[index,1] - outDim*normal[1]
-            zIn = self.trainMatX[index,2] - outDim*normal[2]
+            xIn = self.trainMatX[index,0] - self.outDim*normal[0]
+            yIn = self.trainMatX[index,1] - self.outDim*normal[1]
+            zIn = self.trainMatX[index,2] - self.outDim*normal[2]
             trainMatXInside[index,:] = np.array([xIn,yIn,zIn])
 
         trainMatXAll = np.row_stack((self.trainMatX,trainMatXOutside,trainMatXInside))
@@ -69,13 +71,17 @@ class GPdataHandler():
         if self.centered == True:
             trainMatXAll = trainMatXAll - self.pcdCenter 
 
-        fig3D = plt.figure(figsize=plt.figaspect(1))  
-        ax = fig3D.gca(projection='3d')
-        ax.scatter(self.trainMatX[:,0], self.trainMatX[:,1], self.trainMatX[:,2], color='g')
-        ax.scatter(trainMatXOutside[:,0], trainMatXOutside[:,1], trainMatXOutside[:,2], color='r')
-        ax.scatter(trainMatXInside[:,0], trainMatXInside[:,1], trainMatXInside[:,2], color='b')
-        plt.show()
-        
+        tX = o3d.geometry.PointCloud()
+        tXin = o3d.geometry.PointCloud()
+        tXout = o3d.geometry.PointCloud()
+        tX.points = o3d.utility.Vector3dVector(self.trainMatX)
+        tXin.points = o3d.utility.Vector3dVector(trainMatXInside)
+        tXout.points = o3d.utility.Vector3dVector(trainMatXOutside)
+        tX.paint_uniform_color([1,0,0])
+        tXin.paint_uniform_color([0,1,0])
+        tXout.paint_uniform_color([0,0,1])
+        o3d.visualization.draw_geometries([tX,tXin,tXout])
+
         return trainMatXAll, trainMatYAll
  
     def genFromBB(self, boxEdgePointN=0, spherePointN=0, sphereRadius=0.01):
@@ -114,7 +120,7 @@ class GPdataHandler():
             edgePoints = edgePoints[np.sum(edgePoints,axis=1)!=0]
             trainMatXAll = np.concatenate((trainMatXAll,edgePoints), axis=0)
             trainMatYAll = np.concatenate((trainMatYAll, np.ones((edgePoints.shape[0],1))))
- 
+        
         fig3D = plt.figure(figsize=plt.figaspect(1))  
         ax = fig3D.gca(projection='3d')
         ax.scatter(self.trainMatX[:,0], self.trainMatX[:,1], self.trainMatX[:,2], color='g')
@@ -126,17 +132,13 @@ class GPdataHandler():
 
         return trainMatXAll, trainMatYAll    
 
-    def addTactilePoints(self, trainMatXAll, trainMatYAll, complete_mesh_path, T, num, rep, outDim, distanceLabel=False):
+    def addTactilePoints(self, trainMatXAll, trainMatYAll, pcd, num):
 
-        mesh = o3d.io.read_triangle_mesh(complete_mesh_path)
-        mesh.transform(np.linalg.inv(T))
-        originalPcd = mesh.sample_points_uniformly(number_of_points=1000)
-
-        originalPcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
-        o3d.geometry.PointCloud.orient_normals_towards_camera_location(originalPcd)
-        pcdNormals = np.asarray(originalPcd.normals)
+        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+        o3d.geometry.PointCloud.orient_normals_towards_camera_location(pcd)
+        pcdNormals = np.asarray(pcd.normals)
        
-        origPcd = np.asarray(originalPcd.points)
+        origPcd = np.asarray(pcd.points)
         mask = origPcd[:,2] > self.maxZ
         origPcd = origPcd[mask]
         pcdNormals = pcdNormals[mask]
@@ -154,46 +156,52 @@ class GPdataHandler():
         tactileXInside = np.zeros((num,3))
         tactileXOutside = np.zeros((num,3))
         
-        if distanceLabel==False:
+        if self.distanceLabel==False:
             tactileYInside = (-1)*np.ones((num,1))
             tactileYOutside = np.ones((num,1))
         else:
-            tactileYInside = (-outDim)*np.ones((num,1))
-            tactileYOutside = outDim*np.ones((num,1))
+            tactileYInside = (-self.outDim)*np.ones((num,1))
+            tactileYOutside = self.outDim*np.ones((num,1))
         
         for index,normal in enumerate(tactileNormals):
-            xOut = tactilePoints[index,0] + outDim*normal[0] 
-            yOut = tactilePoints[index,1] + outDim*normal[1] 
-            zOut = tactilePoints[index,2] + outDim*normal[2] 
+            xOut = tactilePoints[index,0] + self.outDim*normal[0] 
+            yOut = tactilePoints[index,1] + self.outDim*normal[1] 
+            zOut = tactilePoints[index,2] + self.outDim*normal[2] 
             tactileXOutside[index,:] = np.array([xOut,yOut,zOut])
-            xIn = tactilePoints[index,0] - outDim*normal[0]
-            yIn = tactilePoints[index,1] - outDim*normal[1]
-            zIn = tactilePoints[index,2] - outDim*normal[2]
+            xIn = tactilePoints[index,0] - self.outDim*normal[0]
+            yIn = tactilePoints[index,1] - self.outDim*normal[1]
+            zIn = tactilePoints[index,2] - self.outDim*normal[2]
             tactileXInside[index,:] = np.array([xIn,yIn,zIn])
 
-        #tactilePoints = np.repeat(tactilePoints, rep , axis=0)
-        #tactileXInside = np.repeat(tactileXInside, rep , axis=0)
-        #tactileXOutside = np.repeat(tactileXOutside, rep , axis=0)
-        #tactileYInside = np.repeat(tactileYInside, rep , axis=0)
-        #tactileYOutside = np.repeat(tactileYOutside, rep , axis=0)
+        tX = o3d.geometry.PointCloud()
+        tXt = o3d.geometry.PointCloud()
+        tXin = o3d.geometry.PointCloud()
+        tXout = o3d.geometry.PointCloud()
+        tX.points = o3d.utility.Vector3dVector(self.trainMatX)
+        tXt.points = o3d.utility.Vector3dVector(tactilePoints)
+        tXin.points = o3d.utility.Vector3dVector(tactileXInside)
+        tXout.points = o3d.utility.Vector3dVector(tactileXOutside)
+        tX.paint_uniform_color([1,0,0])
+        tXt.paint_uniform_color([0,0,0])
+        tXin.paint_uniform_color([0,1,0])
+        tXout.paint_uniform_color([0,0,1])
+        o3d.visualization.draw_geometries([tX,tXt,tXin,tXout])
         
-        #print(tactilePoints.size)
+        if self.centered == True:
+            tactilePoints = tactilePoints - self.pcdCenter 
+            tactileXInside = tactileXInside - self.pcdCenter 
+            tactileXOutside = tactileXOutside - self.pcdCenter 
+        
         trainMatXTact = np.row_stack((trainMatXAll,tactilePoints,tactileXInside,tactileXOutside))
-        trainMatYTact = np.row_stack((trainMatYAll,np.zeros((tactilePoints.size,1)),tactileYInside,tactileYOutside))
+        trainMatYTact = np.row_stack((trainMatYAll,np.zeros((tactilePoints.size,1)),tactileYInside,tactileYOutside)) 
 
-        fig3D = plt.figure(figsize=plt.figaspect(1))  
-        ax = fig3D.gca(projection='3d')
-        ax.scatter(self.trainMatX[:,0], self.trainMatX[:,1], self.trainMatX[:,2], color='g')
-        ax.scatter(tactilePoints[:,0], tactilePoints[:,1], tactilePoints[:,2], color='b')
-        ax.scatter(tactileXInside[:,0], tactileXInside[:,1], tactileXInside[:,2])
-        ax.scatter(tactileXOutside[:,0], tactileXOutside[:,1], tactileXOutside[:,2])
-        plt.show()
-
+        print(tactileYInside)
+        print(tactileYOutside)
         return trainMatXTact, trainMatYTact
         
-    def genTestPoints(self):
+    def genTestPoints(self, testN):
 
-        boxEdgePoints = int(pow(self.testN,1/3))
+        boxEdgePoints = int(pow(testN,1/3))
 
         ## Create test points 
         xV = np.linspace(self.boxCenter[0]-self.boxDim[0],self.boxCenter[0]+self.boxDim[0],boxEdgePoints)

@@ -11,23 +11,69 @@ import time
 import gpdata 
 import myGPs
 
+import open3d as o3d
 
-path = "../partial_pc/002_master_chef_can_0000_pc.pcd"
-mesh_path = "../YCB_Video_Models/models/002_master_chef_can/textured_simple.obj"
-complete_pc_path = "/home/user/YCB_Video_Models/models/002_master_chef_can/points.xyz"
+
+def rotate_view(vis):
+    ctr = vis.get_view_control()
+    ctr.rotate(0.1, 0.0)
+    return False
+
+## Directly from point cloud 
+#pcd = o3d.io.read_point_cloud("/home/user/YCB_Video_Models/models/002_master_chef_can/points.xyz")
+#T = np.array([[-0.70249935,  0.41384923, -0.57898487,  0.4 ],
+#                [ 0.71168439,  0.40850807, -0.57151246,  0.4 ],
+#                [ 0.,         -0.81354162, -0.58150669,  0.4 ],
+#                [ 0.,          0.,          0.,          1. ]])
+#pcd = pcd.transform(np.linalg.inv(T))
+#diameter = np.linalg.norm(np.asarray(pcd.get_max_bound()) - np.asarray(pcd.get_min_bound()))
+#_, pt_map = pcd.hidden_point_removal([0,0,0], 1e3*diameter)
+#visiblePcd = pcd.select_by_index(pt_map)
+#hiddenPcd = pcd.select_by_index(pt_map, invert=True)
+#visiblePcd.paint_uniform_color([1,0, 0])
+#hiddenPcd.paint_uniform_color([0,0,1])
+#o3d.visualization.draw_geometries([visiblePcd,hiddenPcd])
+
+## More uniform sampling
 T = np.array([[-0.70249935,  0.41384923, -0.57898487,  0.4 ],
                 [ 0.71168439,  0.40850807, -0.57151246,  0.4 ],
                 [ 0.,         -0.81354162, -0.58150669,  0.4 ],
                 [ 0.,          0.,          0.,          1. ]])
 
-trainP = 200
-testP = 70000
-outDim = 0.01
-dataHandler = gpdata.GPdataHandler(complete_pc_path, trainP, testP)
-trainMatXAll, trainMatYAll = dataHandler.genFromNormals(outDim, distanceLabel=True)
-testMatX = dataHandler.genTestPoints()
+partial = False 
+mesh = o3d.io.read_triangle_mesh("../YCB_Video_Models/models/002_master_chef_can/textured_simple.obj",True)
+mesh = mesh.transform(np.linalg.inv(T))
+o3d.visualization.draw_geometries([mesh])
 
-#trainMatXAll, trainMatYAll = dataHandler.addTactilePoints(trainMatXAll, trainMatYAll, mesh_path, T, num = 4, rep = 20, outDim=outDim)
+pcd = mesh.sample_points_uniformly(number_of_points=2500)
+pcd = mesh.sample_points_poisson_disk(number_of_points=500, pcl=pcd)
+
+vis = o3d.visualization.Visualizer()
+
+if partial: 
+    diameter = np.linalg.norm(np.asarray(pcd.get_max_bound()) - np.asarray(pcd.get_min_bound()))
+    _, pt_map = pcd.hidden_point_removal([0,0,0], 1e3*diameter)
+    visiblePcd = pcd.select_by_index(pt_map)
+    hiddenPcd = pcd.select_by_index(pt_map, invert=True)
+    visiblePcd.paint_uniform_color([1,0, 0])
+    hiddenPcd.paint_uniform_color([0.5,0.5,0.5])
+    vis.create_window()
+    o3d.visualization.draw_geometries_with_animation_callback([visiblePcd],rotate_view)
+    vis.destroy_window()
+
+trainN = 200
+testN = 150000
+outDim = 0.01 #1 cm
+
+if partial:
+    dataHandler = gpdata.GPdataHandler(visiblePcd, trainN, outDim, distanceLabel=True)
+    trainMatXAll, trainMatYAll = dataHandler.genFromNormals()
+    trainMatXAll, trainMatYAll = dataHandler.addTactilePoints(trainMatXAll, trainMatYAll, hiddenPcd, num = 5)
+else:
+    dataHandler = gpdata.GPdataHandler(pcd, trainN, outDim, distanceLabel=True)
+    trainMatXAll, trainMatYAll = dataHandler.genFromNormals()
+    
+testMatX = dataHandler.genTestPoints(testN)
 
 # Torch tensors  
 Xt = torch.from_numpy(trainMatXAll).float()
@@ -58,13 +104,11 @@ data_dim = train_x.size(-1)
 class LargeFeatureExtractor(torch.nn.Sequential):
     def __init__(self):
         super(LargeFeatureExtractor, self).__init__()
-        self.add_module('linear1', torch.nn.Linear(data_dim, 500)) #1000
+        self.add_module('linear1', torch.nn.Linear(data_dim, 100)) 
         self.add_module('relu1', torch.nn.ReLU())
-        self.add_module('linear2', torch.nn.Linear(500, 250)) #500
+        self.add_module('linear2', torch.nn.Linear(100, 50)) 
         self.add_module('relu2', torch.nn.ReLU())
-        self.add_module('linear3', torch.nn.Linear(250, 50)) #250
-        self.add_module('relu3', torch.nn.ReLU())
-        self.add_module('linear4', torch.nn.Linear(50, 5)) # 50 
+        self.add_module('linear3', torch.nn.Linear(50, 10)) 
 
 feature_extractor = LargeFeatureExtractor()
 
@@ -77,7 +121,6 @@ class GPRegressionModel(gpytorch.models.ExactGP):
             #self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1.0, 1.0)
 
         def forward(self, x):
-
             # Feature extractor
             projected_x = self.feature_extractor(x)
             # Scale to bounds 
@@ -88,11 +131,13 @@ class GPRegressionModel(gpytorch.models.ExactGP):
             return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
 likelihood = gpytorch.likelihoods.GaussianLikelihood()
+likelihood.noise_covar.register_constraint("raw_noise", gpytorch.constraints.Positive())
+
 model = GPRegressionModel(train_x, train_y, likelihood)
 
 hypers = {
     'likelihood.noise_covar.noise': torch.tensor(1e-4), #1e-4
-    'covar_module.max_dist': torch.tensor(0.25), #0.5
+    'covar_module.max_dist': torch.tensor(dataHandler.boxDiag),
 }
 model.initialize(**hypers)
 
@@ -105,12 +150,12 @@ likelihood.train()
 
 for name, param in model.named_parameters():
     print(name)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001) 
-#optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[50])
+
+optimizer = torch.optim.SGD(model.parameters(), lr=0.05) #0.05
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[25,50,100,200])
 
 mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
-iterations = 200
+iterations = 300
 
 with gpytorch.settings.max_cholesky_size(0):
     for it in range(iterations):
@@ -135,12 +180,8 @@ with gpytorch.settings.max_cholesky_size(0):
 
     ## Evaluation 
     with torch.no_grad(), gpytorch.settings.use_toeplitz(False), gpytorch.settings.fast_pred_var():
-        f_preds = model(test_x)
-        f_var = f_preds.variance
         y_preds = likelihood(model(test_x))  
-        y_var = y_preds.variance 
         print('Test MAE: {}'.format(torch.mean(torch.abs(y_preds.mean - test_y))))   
-
 
         preds = likelihood(model(predictionX))
         var = preds.variance
@@ -156,8 +197,14 @@ with gpytorch.settings.max_cholesky_size(0):
 
         indexes = np.absolute(mu)<1e-3
         fig3D = plt.figure(figsize=plt.figaspect(1))  
-        ax = fig3D.gca(projection='3d')
-        ax.scatter(trainX0[:,0], trainX0[:,1], trainX0[:,2], color='g')
-        ax.scatter(predictionX[indexes,0], predictionX[indexes,1], predictionX[indexes,2], c=var[indexes])
-        plt.show()
-    
+        trainSet = o3d.geometry.PointCloud()
+        trainSet.points = o3d.utility.Vector3dVector(trainX0)
+        trainSet.paint_uniform_color([1,0,0])
+        predictionSet = o3d.geometry.PointCloud()
+        predictionSet.points = o3d.utility.Vector3dVector(predictionX[indexes,:])
+        var = var[indexes].numpy()
+        colors = (var - np.min(var)) / (np.max(var) - np.min(var))
+        predictionSet.colors = o3d.utility.Vector3dVector(np.column_stack((colors,colors,colors)))
+        vis.create_window()
+        o3d.visualization.draw_geometries_with_animation_callback([mesh.translate(-dataHandler.pcdCenter),predictionSet],rotate_view)
+        vis.destroy_window()

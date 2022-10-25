@@ -17,7 +17,7 @@ import myGPs
 import time
 
 # Import point cloud
-pcd = o3d.io.read_point_cloud("../3d-tools/python/mesh_pc_render/partial_pc/002_master_chef_can_0000_pc.pcd")
+pcd = o3d.io.read_point_cloud("../partial_pc/002_master_chef_can_0000_pc.pcd")
 pcdPoints = np.asarray(pcd.points)
 #maxPointZ = np.argmax(pcdPoints[:,2])
 #points = [[0,0,0],pcdPoints[maxPointZ,:]]

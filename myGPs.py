@@ -28,7 +28,7 @@ class ThinPlateRegularizer(gpytorch.kernels.Kernel):
 
         # set the parameter constraint to be positive
         if dist_constraint is None:
-            dist_constraint = gpytorch.constraints.GreaterThan(0)
+            dist_constraint = gpytorch.constraints.Positive()
            
         # register the constraint
         self.register_constraint("max_dist", dist_constraint)
