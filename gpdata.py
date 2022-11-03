@@ -193,7 +193,7 @@ class GPdataHandler():
             tactileXOutside = tactileXOutside - self.pcdCenter 
         
         trainMatXTact = np.row_stack((trainMatXAll,tactilePoints,tactileXInside,tactileXOutside))
-        trainMatYTact = np.row_stack((trainMatYAll,np.zeros((tactilePoints.size,1)),tactileYInside,tactileYOutside)) 
+        trainMatYTact = np.row_stack((trainMatYAll,np.zeros((tactilePoints.shape[0],1)),tactileYInside,tactileYOutside)) 
 
         print(tactileYInside)
         print(tactileYOutside)
