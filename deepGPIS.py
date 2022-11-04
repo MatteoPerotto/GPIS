@@ -117,7 +117,8 @@ def main():
                   [0., 0., 0., 1.]])
 
     partial = True
-    mesh = o3d.io.read_triangle_mesh("data/002_master_chef_can/google_16k/textured.obj", True)
+    # mesh = o3d.io.read_triangle_mesh("data/002_master_chef_can/google_16k/textured.obj", True)
+    mesh = o3d.io.read_triangle_mesh("../YCB_Video_Models/models/002_master_chef_can/textured_simple.obj", True)
     mesh = mesh.transform(np.linalg.inv(T))
     o3d.visualization.draw_geometries([mesh])
 
