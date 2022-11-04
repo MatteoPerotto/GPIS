@@ -41,9 +41,9 @@ T = np.array([[-0.70249935,  0.41384923, -0.57898487,  0.4 ],
                 [ 0.,          0.,          0.,          1. ]])
 
 partial = False 
-mesh = o3d.io.read_triangle_mesh("../YCB_Video_Models/models/002_master_chef_can/textured_simple.obj",True)
+
+mesh = o3d.io.read_triangle_mesh("../YCB_Video_Models/models/035_power_drill/textured_simple.obj",True)
 mesh = mesh.transform(np.linalg.inv(T))
-o3d.visualization.draw_geometries([mesh])
 
 pcd = mesh.sample_points_uniformly(number_of_points=2500)
 pcd = mesh.sample_points_poisson_disk(number_of_points=500, pcl=pcd)
@@ -58,7 +58,7 @@ if partial:
     visiblePcd.paint_uniform_color([1,0, 0])
     hiddenPcd.paint_uniform_color([0.5,0.5,0.5])
     vis.create_window()
-    o3d.visualization.draw_geometries_with_animation_callback([visiblePcd],rotate_view)
+    o3d.visualization.draw_geometries_with_animation_callback([pcd, visiblePcd, hiddenPcd],rotate_view)
     vis.destroy_window()
 
 trainN = 200
@@ -152,10 +152,10 @@ for name, param in model.named_parameters():
     print(name)
 
 optimizer = torch.optim.SGD(model.parameters(), lr=0.05) #0.05
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[25,50,100,200])
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[50,100,200])
 
 mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
-iterations = 300
+iterations = 300 
 
 with gpytorch.settings.max_cholesky_size(0):
     for it in range(iterations):
