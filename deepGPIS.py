@@ -40,7 +40,8 @@ T = np.array([[-0.70249935,  0.41384923, -0.57898487,  0.4 ],
                 [ 0.,         -0.81354162, -0.58150669,  0.4 ],
                 [ 0.,          0.,          0.,          1. ]])
 
-partial = False 
+partial = True 
+contactP = True
 
 mesh = o3d.io.read_triangle_mesh("../YCB_Video_Models/models/035_power_drill/textured_simple.obj",True)
 mesh = mesh.transform(np.linalg.inv(T))
@@ -58,7 +59,7 @@ if partial:
     visiblePcd.paint_uniform_color([1,0, 0])
     hiddenPcd.paint_uniform_color([0.5,0.5,0.5])
     vis.create_window()
-    o3d.visualization.draw_geometries_with_animation_callback([pcd, visiblePcd, hiddenPcd],rotate_view)
+    o3d.visualization.draw_geometries_with_animation_callback([visiblePcd],rotate_view)
     vis.destroy_window()
 
 trainN = 200
@@ -68,7 +69,8 @@ outDim = 0.01 #1 cm
 if partial:
     dataHandler = gpdata.GPdataHandler(visiblePcd, trainN, outDim, distanceLabel=True)
     trainMatXAll, trainMatYAll = dataHandler.genFromNormals()
-    trainMatXAll, trainMatYAll = dataHandler.addTactilePoints(trainMatXAll, trainMatYAll, hiddenPcd, num = 5)
+    if contactP:
+        trainMatXAll, trainMatYAll = dataHandler.addTactilePoints(trainMatXAll, trainMatYAll, hiddenPcd, num = 5)
 else:
     dataHandler = gpdata.GPdataHandler(pcd, trainN, outDim, distanceLabel=True)
     trainMatXAll, trainMatYAll = dataHandler.genFromNormals()
@@ -204,7 +206,7 @@ with gpytorch.settings.max_cholesky_size(0):
         predictionSet.points = o3d.utility.Vector3dVector(predictionX[indexes,:])
         var = var[indexes].numpy()
         colors = (var - np.min(var)) / (np.max(var) - np.min(var))
-        predictionSet.colors = o3d.utility.Vector3dVector(np.column_stack((colors,colors,colors)))
+        predictionSet.colors = o3d.utility.Vector3dVector(np.column_stack((255*(colors-np.amin(colors))/(np.amax(colors)-np.amin(colors)),colors,colors)))
         vis.create_window()
         o3d.visualization.draw_geometries_with_animation_callback([mesh.translate(-dataHandler.pcdCenter),predictionSet],rotate_view)
         vis.destroy_window()
